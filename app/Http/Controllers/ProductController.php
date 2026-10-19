@@ -60,8 +60,16 @@ class ProductController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('products', 'public');
-            $validated['image'] = $path;
+            $file = $request->file('image');
+            // Jika berjalan di lingkungan Vercel / serverless (read-only filesystem), simpan sebagai Data URI
+            if (isset($_SERVER['VERCEL']) || !is_writable(storage_path('app/public'))) {
+                $mime = $file->getMimeType();
+                $base64 = base64_encode(file_get_contents($file->getRealPath()));
+                $validated['image'] = 'data:' . $mime . ';base64,' . $base64;
+            } else {
+                $path = $file->store('products', 'public');
+                $validated['image'] = $path;
+            }
         }
 
         Product::create($validated);
@@ -101,12 +109,19 @@ class ProductController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($product->image && Storage::disk('public')->exists($product->image)) {
-                Storage::disk('public')->delete($product->image);
+            $file = $request->file('image');
+            if (isset($_SERVER['VERCEL']) || !is_writable(storage_path('app/public'))) {
+                $mime = $file->getMimeType();
+                $base64 = base64_encode(file_get_contents($file->getRealPath()));
+                $validated['image'] = 'data:' . $mime . ';base64,' . $base64;
+            } else {
+                // Delete old image if exists locally
+                if ($product->image && !str_starts_with($product->image, 'data:image/') && Storage::disk('public')->exists($product->image)) {
+                    Storage::disk('public')->delete($product->image);
+                }
+                $path = $file->store('products', 'public');
+                $validated['image'] = $path;
             }
-            $path = $request->file('image')->store('products', 'public');
-            $validated['image'] = $path;
         }
 
         $product->update($validated);
